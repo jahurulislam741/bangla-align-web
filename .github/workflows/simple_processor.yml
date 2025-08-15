@@ -30,13 +30,13 @@ jobs:
         run: |
           mkdir -p temp_input
           echo "${{ toJSON(github.event.client_payload.file) }}" | python -c "
-import json, base64, sys
-file_data = json.load(sys.stdin)
-filename = file_data['filename']
-content = base64.b64decode(file_data['content'])
-with open(f'temp_input/{filename}', 'wb') as f:
-    f.write(content)
-"
+            import json, base64, sys
+            file_data = json.load(sys.stdin)
+            filename = file_data['filename']
+            content = base64.b64decode(file_data['content'])
+            with open(f'temp_input/{filename}', 'wb') as f:
+            f.write(content)
+          "
 
       # Step 4: Run your Python script on the uploaded file
       - name: Run simple processor
