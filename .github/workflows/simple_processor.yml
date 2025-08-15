@@ -23,25 +23,83 @@ jobs:
         with:
           python-version: '3.10'
 
-      # Step 3: Prepare the uploaded file
-      - name: Prepare uploaded file
+# .github/workflows/simple_processor.yml
+
+name: Simple String Processor Workflow
+
+# This workflow is triggered by a "repository_dispatch" event from your web page
+on:
+  repository_dispatch:
+    types: [run_simple_processor]
+
+jobs:
+  run-processor:
+    runs-on: ubuntu-latest
+
+    # This job will only run if the 'client_payload' has an email and a file
+    if: github.event.client_payload.email != '' && github.event.client_payload.file
+    
+    steps:
+      # Step 1: Checkout your repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up a Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+# Step 3: Prepare the uploaded file
+- name: Prepare uploaded file
+  run: |
+    mkdir -p temp_input
+    echo "${{ toJSON(github.event.client_payload.file) }}" | python - <<'PY'
+    import json, base64, sys, os
+
+    file_json = sys.stdin.read().strip()
+    if not file_json:
+        print("No file payload found; skipping.")
+        sys.exit(0)
+
+    file_data = json.loads(file_json)
+    filename = file_data["filename"]
+    content = base64.b64decode(file_data["content"])
+
+    os.makedirs("temp_input", exist_ok=True)
+    with open(os.path.join("temp_input", filename), "wb") as f:
+        f.write(content)
+    PY
+
+
+      # Step 4: Run your Python script on the uploaded file
+      - name: Run simple processor
         run: |
-          mkdir -p temp_input
-          echo "${{ toJSON(github.event.client_payload.file) }}" | python - <<'PY'
-          import json, base64, sys, os
+          python simple_processor.py temp_input/${{ github.event.client_payload.file.filename }}
+        env:
+          PYTHONPATH: .
 
-          data = sys.stdin.read().strip()
-          if not data:
-              print("No file payload found; skipping file preparation.")
-              sys.exit(0)
+      # Step 5: Package the output files into a single zip file
+      - name: Archive output files
+        run: |
+          zip -r output_file.zip Z_output_files
 
-          file_data = json.loads(data)
-          filename = file_data['filename']
-          content = base64.b64decode(file_data['content'])
-          os.makedirs("temp_input", exist_ok=True)
-          with open(os.path.join("temp_input", filename), "wb") as f:
-              f.write(content)
-          PY
+      # Step 6: Send the zip file to the user's email
+      - name: Send email with results
+        uses: dawidd6/action-send-mail@v3
+        with:
+          # You need to set these as GitHub Secrets in your repo settings
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          # Use the email from the payload
+          to: ${{ github.event.client_payload.email }}
+          from: GitHub Actions <no-reply@github.com>
+          subject: Your Simple Processor Results
+          body: Your file has been processed! The output is attached.
+          attachments: output_file.zip
+
 
       # Step 4: Run your Python script on the uploaded file
       - name: Run simple processor
