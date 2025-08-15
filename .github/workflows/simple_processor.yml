@@ -13,6 +13,12 @@ jobs:
     if: github.event.client_payload.email != '' && github.event.client_payload.file
 
     steps:
+      - name: Dump event payload
+        run: |
+          echo '--- EVENT PAYLOAD START ---'
+          cat $GITHUB_EVENT_PATH
+          echo '--- EVENT PAYLOAD END ---'
+
       # Step 1: Checkout your repository code
       - name: Checkout repository
         uses: actions/checkout@v4
