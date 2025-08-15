@@ -9,7 +9,7 @@ jobs:
   run-processor:
     runs-on: ubuntu-latest
 
-    # This job will only run if the 'client_payload' has an email and a file
+    # Only run if email and file are present in the dispatch payload
     if: github.event.client_payload.email != '' && github.event.client_payload.file
 
     steps:
@@ -23,37 +23,63 @@ jobs:
         with:
           python-version: '3.10'
 
-      # Step 3: Prepare the uploaded file
+      # Step 3: Prepare the uploaded file (fail early if payload is missing)
       - name: Prepare uploaded file
         run: |
           mkdir -p temp_input
           echo "${{ toJSON(github.event.client_payload.file) }}" | python - <<'PY'
           import json, base64, sys, os
-
-          file_json = sys.stdin.read().strip()
-          if not file_json:
-              print("No file payload found; skipping.")
-              sys.exit(0)
-
-          file_data = json.loads(file_json)
-          filename = file_data["filename"]
-          content = base64.b64decode(file_data["content"])
-
+          data = sys.stdin.read().strip()
+          if not data:
+              print("ERROR: No file payload found (github.event.client_payload.file is empty).")
+              sys.exit(1)
+          try:
+              file = json.loads(data)
+          except Exception as e:
+              print("ERROR: Could not parse payload as JSON:", e)
+              print("RAW DATA:", data)
+              sys.exit(1)
+          if not file.get("filename") or not file.get("content"):
+              print("ERROR: Payload missing 'filename' or 'content'. Payload was:")
+              print(file)
+              sys.exit(1)
           os.makedirs("temp_input", exist_ok=True)
-          with open(os.path.join("temp_input", filename), "wb") as f:
-              f.write(content)
+          outpath = os.path.join("temp_input", file["filename"])
+          with open(outpath, "wb") as f:
+              f.write(base64.b64decode(file["content"]))
+          print("Wrote file:", outpath)
           PY
 
-      # Step 4: Run your Python script on the uploaded file
+      # Step 3b: Debug payload and files to verify what we have
+      - name: Debug payload and files
+        run: |
+          echo 'Payload seen by Actions:'
+          echo '${{ toJSON(github.event.client_payload.file) }}'
+          echo 'Files in temp_input:'
+          ls -la temp_input || true
+
+      # Step 4: Run your Python script on the uploaded file (guard existence)
       - name: Run simple processor
         run: |
-          python simple_processor.py "temp_input/${{ github.event.client_payload.file.filename }}"
+          set -e
+          IN="temp_input/${{ github.event.client_payload.file.filename }}"
+          if [ ! -f "$IN" ]; then
+            echo "ERROR: Input file not found: $IN"
+            echo "Payload was:"
+            echo '${{ toJSON(github.event.client_payload.file) }}'
+            exit 1
+          fi
+          python simple_processor.py "$IN"
         env:
           PYTHONPATH: .
 
       # Step 5: Package the output files into a single zip file
       - name: Archive output files
         run: |
+          if [ ! -d "Z_output_files" ]; then
+            echo "ERROR: Output directory 'Z_output_files' not found. Did the processor create it?"
+            exit 1
+          fi
           zip -r output_file.zip Z_output_files
 
       # Step 6: Send the zip file to the user's email
