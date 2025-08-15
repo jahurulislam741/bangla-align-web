@@ -27,17 +27,17 @@ jobs:
 
       # Step 3: Prepare the uploaded file
       - name: Prepare uploaded file
-        run: |
-          mkdir -p temp_input
-          echo "${{ toJSON(github.event.client_payload.file) }}" > file_payload.json
-          cat file_payload.json | python -c "
-              import json, base64, sys
-              file_data = json.load(sys.stdin)
-              filename = file_data['filename']
-              content = base64.b64decode(file_data['content'])
-              with open(f'temp_input/{filename}', 'wb') as f:
-                  f.write(content)
-              "
+      run: |
+        mkdir -p temp_input
+        echo "${{ toJSON(github.event.client_payload.file) }}" | python - <<'PY'
+        import json, base64, sys
+        file_data = json.load(sys.stdin)
+        filename = file_data['filename']
+        content = base64.b64decode(file_data['content'])
+        with open(f'temp_input/{filename}', 'wb') as f:
+            f.write(content)
+        PY
+
 
       # Step 4: Run your Python script on the uploaded file
       - name: Run simple processor
